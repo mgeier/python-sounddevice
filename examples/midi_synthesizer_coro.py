@@ -13,9 +13,9 @@ import mido
 import numpy as np
 import sounddevice as sd
 
-ATTACK = 0.1
-DECAY = 0.2
-SUSTAIN = 0.7
+ATTACK = 0.01
+DECAY = 0.4
+SUSTAIN = 0.5
 RELEASE = 0.5
 
 
@@ -74,6 +74,7 @@ try:
 
     def generate_signal(note, note_on, velocity, note_off, t):
         note_on /= samplerate
+        note_off /= samplerate
         env = np.ones_like(t)
 
         peak = args.amplitude * velocity / 127
@@ -81,7 +82,7 @@ try:
         env *= vol
         env = np.minimum(
             env,
-            -vol * (t - RELEASE - note_off / samplerate) / RELEASE)
+            -vol * (t - RELEASE - note_off) / RELEASE)
         env = np.maximum(
             env,
             peak + (vol - peak) * (t - ATTACK - note_on) / DECAY)
@@ -121,7 +122,7 @@ try:
                         note_off = block_end
                     signal = generate_signal(note, note_on, velocity, note_off, t)
                     if signal[-1] != 0:
-                        voices[(channel, note)] = note_on, velocity, index
+                        voices[(channel, note)] = note_on, velocity, note_off
                     else:
                         del voices[(channel, note)]
                     outdata += signal
@@ -138,14 +139,15 @@ try:
                 data = voices.get((msg.channel, msg.note))
                 if data is None:
                     print('note_off without note_on')
-                # TODO: check that note_off is None?
-                note_on, velocity, _ = data
-                signal = generate_signal(msg.note, note_on, velocity, index, t)
-                if signal[-1] != 0:
-                    voices[(msg.channel, msg.note)] = note_on, velocity, index
                 else:
-                    del voices[(msg.channel, msg.note)]
-                outdata += signal
+                    # TODO: check that note_off is None?
+                    note_on, velocity, _ = data
+                    signal = generate_signal(msg.note, note_on, velocity, index, t)
+                    if signal[-1] != 0:
+                        voices[(msg.channel, msg.note)] = note_on, velocity, index
+                    else:
+                        del voices[(msg.channel, msg.note)]
+                    outdata += signal
             else:
                 pass  # ignored
 
@@ -155,6 +157,8 @@ try:
                 except queue.Empty as e:
                     # TODO: end of song?
                     # TODO: or wait for more messages?
+
+                    print('queue is empty')
 
                     # TODO: generate existing voices
 
