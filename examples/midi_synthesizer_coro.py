@@ -59,10 +59,10 @@ try:
     midifile = mido.MidiFile(args.filename)
     samplerate = sd.query_devices(args.device, 'output')['default_samplerate']
 
-    def audio_coroutine():
+    async def audio_coroutine(loop):
         print('starting coroutine')
         while True:
-            outdata, frames, time, status = yield
+            outdata, frames, time, status = await loop
             try:
                 msg = q.get_nowait()
             except queue.Empty as e:
@@ -76,7 +76,7 @@ try:
             offset += round(msg.time * samplerate)
             while offset >= frames:
                 offset -= frames
-                outdata, frames, time, status = yield
+                outdata, frames, time, status = await loop
             if msg.type == 'note_on':
                 print('generating note:', msg.note)
             else:
@@ -90,11 +90,19 @@ try:
                     # TODO: end of song?
                     # TODO: or wait for more messages?
                     offset -= frames
-                    outdata, frames, time, status = yield
+                    outdata, frames, time, status = await loop
                 else:
                     break
 
-    generator = audio_coroutine()
+    class Loop:
+
+        def __await__(self):
+            yield 42
+            return 'data', 1000, 'time', 'status'
+
+    loop = Loop()
+
+    generator = audio_coroutine(loop)
     # NB: coroutine is started in main thread
     generator.send(None)
 
@@ -102,7 +110,8 @@ try:
 
         outdata.fill(0)
 
-        generator.send((outdata, frames, time, status))
+        #generator.send((outdata, frames, time, status))
+        generator.send(None)
 
     stream = sd.OutputStream(
         device=args.device,
