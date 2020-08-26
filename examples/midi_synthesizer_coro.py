@@ -72,13 +72,26 @@ try:
                 print('got first message')
                 break
         offset = 0
+        # mapping (channel, pitch) -> offset, velocity
+        voices = {}
         while True:
             offset += round(msg.time * samplerate)
             while offset >= frames:
+                # TODO: generate existing voices (sustain until end of block)
+                # TODO: update offsets in voices
                 offset -= frames
                 outdata, frames, time, status = await loop
             if msg.type == 'note_on':
                 print('generating note:', msg.note)
+                # TODO: if (channel, note) already exists: insert note_off?
+                voices[(msg.channel, msg.note)] = offset, msg.velocity
+            elif msg.type == 'note_off':
+                data = voices.get((msg.channel, msg.note))
+                if data is None:
+                    print('note_off without note_on')
+                offset, velocity = data
+                # TODO: release
+                pass
             else:
                 # ignored
                 pass
@@ -89,6 +102,9 @@ try:
                 except queue.Empty as e:
                     # TODO: end of song?
                     # TODO: or wait for more messages?
+
+                    # TODO: generate existing voices
+
                     offset -= frames
                     outdata, frames, time, status = await loop
                 else:
@@ -109,7 +125,6 @@ try:
     
 
     generator = audio_coroutine(loop)
-    # NB: coroutine is started in main thread
     generator.send(None)
 
     def callback(outdata, frames, time, status):
