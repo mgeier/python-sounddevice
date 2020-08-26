@@ -13,6 +13,19 @@ import mido
 import numpy as np
 import sounddevice as sd
 
+ATTACK = 0.1
+DECAY = 0.2
+SUSTAIN = 0.7
+RELEASE = 0.5
+
+
+def m2f(note):
+    """Convert MIDI note number to frequency in Hertz.
+
+    See https://en.wikipedia.org/wiki/MIDI_Tuning_Standard.
+
+    """
+    return 2 ** ((note - 69) / 12) * 440
 
 
 parser = argparse.ArgumentParser(add_help=False)
@@ -59,6 +72,27 @@ try:
     midifile = mido.MidiFile(args.filename)
     samplerate = sd.query_devices(args.device, 'output')['default_samplerate']
 
+    def generate_signal(note, note_on, velocity, note_off, t):
+        note_on /= samplerate
+        env = np.ones_like(t)
+
+        peak = args.amplitude * velocity / 127
+        vol = SUSTAIN * peak
+        env *= vol
+        env = np.minimum(
+            env,
+            -vol * (t - RELEASE - note_off / samplerate) / RELEASE)
+        env = np.maximum(
+            env,
+            peak + (vol - peak) * (t - ATTACK - note_on) / DECAY)
+        env = np.minimum(
+            env,
+            peak * (t - note_on) / ATTACK)
+        env = np.maximum(env, 0)
+
+        sine = np.sin(2 * np.pi * m2f(note) * t)
+        return env * sine
+
     async def audio_coroutine(loop):
         print('starting coroutine')
         while True:
@@ -72,30 +106,48 @@ try:
                 print('got first message')
                 break
         index = 0
+        t = np.arange(frames) / samplerate
         block_end = frames
         # mapping (channel, pitch) -> index, velocity
         voices = {}
         while True:
             index += round(msg.time * samplerate)
             while index >= block_end:
-                # TODO: generate existing voices (sustain until end of block)
-                # TODO: update offsets in voices
+
+                # Iterating over a copy, because "voices" may be mutated
+                for (channel, note) in list(voices):
+                    note_on, velocity, note_off = voices[(channel, note)]
+                    if note_off is None:
+                        note_off = block_end
+                    signal = generate_signal(note, note_on, velocity, note_off, t)
+                    if signal[-1] != 0:
+                        voices[(channel, note)] = note_on, velocity, index
+                    else:
+                        del voices[(channel, note)]
+                    outdata += signal
+
                 outdata, frames, time, status = await loop
+                t = np.arange(block_end, block_end + frames) / samplerate
+                t.shape = -1, 1
                 block_end += frames
             if msg.type == 'note_on':
                 print('generating note:', msg.note)
                 # TODO: if (channel, note) already exists: insert note_off?
-                voices[(msg.channel, msg.note)] = index, msg.velocity
+                voices[(msg.channel, msg.note)] = index, msg.velocity, None
             elif msg.type == 'note_off':
                 data = voices.get((msg.channel, msg.note))
                 if data is None:
                     print('note_off without note_on')
-                index, velocity = data
-                # TODO: release
-                pass
+                # TODO: check that note_off is None?
+                note_on, velocity, _ = data
+                signal = generate_signal(msg.note, note_on, velocity, index, t)
+                if signal[-1] != 0:
+                    voices[(msg.channel, msg.note)] = note_on, velocity, index
+                else:
+                    del voices[(msg.channel, msg.note)]
+                outdata += signal
             else:
-                # ignored
-                pass
+                pass  # ignored
 
             while True:
                 try:
@@ -107,6 +159,7 @@ try:
                     # TODO: generate existing voices
 
                     outdata, frames, time, status = await loop
+                    t = np.arange(block_end, block_end + frames) / samplerate
                     block_end += frames
                 else:
                     break
