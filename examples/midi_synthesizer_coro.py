@@ -97,10 +97,16 @@ try:
     class Loop:
 
         def __await__(self):
-            yield 42
-            return 'data', 1000, 'time', 'status'
+            # TODO: yield some kind of future? append to list of futures?
+            #result = yield 42
+            result = yield
+            #print('__await__ yield result:', result)
+            # TODO: return the result of the future?
+            #return 'data', 10000, 'time', 'status'
+            return result
 
     loop = Loop()
+    
 
     generator = audio_coroutine(loop)
     # NB: coroutine is started in main thread
@@ -110,8 +116,13 @@ try:
 
         outdata.fill(0)
 
-        #generator.send((outdata, frames, time, status))
-        generator.send(None)
+        # TODO: update loop, notify all awaiting coroutines?
+
+        generator.send((outdata, frames, time, status))
+        #data = generator.send('dummy')
+        #print('data from generator.send():', data)
+
+        # TODO: future.set_result() (or .done()?)
 
     stream = sd.OutputStream(
         device=args.device,
