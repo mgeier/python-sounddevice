@@ -4,6 +4,7 @@
 The mido module and NumPy must be installed.
 
 """
+# https://mdk.fr/blog/python-coroutines-with-async-and-await.html
 import argparse
 import queue
 
@@ -136,6 +137,7 @@ try:
                     signal = generate_signal(msg.note, note_on, velocity, index, t)
                     outdata += signal
                     if signal[-1] != 0:
+                        # TODO: this will be rendered twice?
                         # continued in next block
                         voices[(msg.channel, msg.note)] = note_on, velocity, index
                     else:
@@ -156,6 +158,7 @@ try:
 
                     outdata, frames, time, status = await loop
                     t = np.arange(block_end, block_end + frames) / samplerate
+                    t.shape = -1, 1
                     block_end += frames
                 else:
                     break
@@ -186,6 +189,8 @@ try:
         generator.send((outdata, frames, time, status))
         #data = generator.send('dummy')
         #print('data from generator.send():', data)
+
+        # TODO: check for StopIteration?
 
         # TODO: future.set_result() (or .done()?)
 
