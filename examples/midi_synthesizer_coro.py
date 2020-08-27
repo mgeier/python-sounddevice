@@ -59,6 +59,41 @@ args = parser.parse_args(remaining)
 
 q = queue.Queue(maxsize=args.queuesize)
 
+class Synthesizer:
+
+    def __init__(self):
+        pass
+
+async def play_note(synth):
+    pass
+
+# TODO: parent class?
+# TODO: future-like?
+class NoteTask:
+
+    def __init__(self):
+        # TODO: pitch, velocity, loop, samplerate?
+        # TODO: reference to Player
+        pass
+
+    def __await__(self):
+        return self._run().__await__()
+
+    async def _run(self):
+
+        # TODO: infinite loop
+        # TODO: generate signal
+
+        # TODO: await
+
+        # TODO: if note has finished:
+        return
+
+    def note_off(self):
+        pass
+
+    # TODO: cancel? fade out?
+
 try:
     midifile = mido.MidiFile(args.filename)
     samplerate = sd.query_devices(args.device, 'output')['default_samplerate']
@@ -98,13 +133,85 @@ try:
             else:
                 print('got first message')
                 break
-        index = 0
+        index = round(msg.time * samplerate)
         t = np.arange(frames) / samplerate
         block_end = frames
-        # mapping: (channel, pitch) -> (on_index, velocity, off_index)
-        voices = {}
+        # mapping: (channel, note) -> (on_index, velocity)
+        active_notes = {}
+        # tuples: (note, on_index, velocity, off_index)
+        released_notes = []
+
+
+        async def new_block():
+            # - play active_notes
+            for (channel, note), (on_index, velocity) in active_notes.items():
+                signal = generate_signal(note, on_index, velocity, block_end, t)
+            # - play released_notes
+            # - await block
+            # - update t
+            # - update block_end
+
+
+        # TODO:
+        # async for ... in blocks:
+        #     while True:
+        #         msg ...
+        #         ...
+        #         # get new msg
+
+        # TODO:
+        # while True:
+        #     get message
+        #     if no message: await new block, continue
+        
+        #     if first message: initialize index
+        #     while later than current block:
+        #         await new block
+        #     add msg to list
+
+
         while True:
-            index += round(msg.time * samplerate)
+            while index < block_end:
+                if msg.type == 'note_on':
+                    # TODO: if (channel, note) already exists: insert note_off?
+                    # TODO: and move to released_notes
+                    active_notes[(msg.channel, msg.note)] = index, msg.velocity
+                elif msg.type == 'note_off':
+                    try:
+                        note_on, velocity = active_notes.pop(
+                            (msg.channel, msg.note))
+                    except KeyError:
+                        print('note_off without note_on (ignored)')
+                    else:
+                        #signal = generate_signal(msg.note, note_on, velocity, index, t)
+                        #outdata += signal
+                        #if signal[-1] != 0:
+                        #    # TODO: this will be rendered twice?
+                        #    # continued in next block
+                        #    voices[(msg.channel, msg.note)] = note_on, velocity, index
+                        #else:
+                        #    del voices[(msg.channel, msg.note)]
+                        released_notes.append((msg.note, note_on, velocity, index))
+                else:
+                    pass  # ignored
+
+                # TODO: get new note
+
+                try:
+                    msg = q.get_nowait()
+                except queue.Empty as e:
+                    # TODO: end of song?
+                    # TODO: or wait for more messages?
+
+                    print('queue is empty')
+
+                index += round(msg.time * samplerate)
+
+            # TODO: iterate active notes
+            # TODO: iterate released_notes, generate, delete if done
+
+            # TODO: await next audio block
+
             while index >= block_end:
 
                 # Iterating over a copy, because "voices" may be mutated
