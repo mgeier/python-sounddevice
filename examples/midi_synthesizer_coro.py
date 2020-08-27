@@ -4,8 +4,6 @@
 The mido module and NumPy must be installed.
 
 """
-
-
 import argparse
 import queue
 
@@ -40,31 +38,23 @@ parser = argparse.ArgumentParser(
     description=__doc__,
     formatter_class=argparse.RawDescriptionHelpFormatter,
     parents=[parser])
-
 parser.add_argument(
     'filename', metavar='FILENAME',
     help='MIDI file to be played back')
-
 parser.add_argument(
     '-a', '--amplitude', type=float, default=0.2,
     help='amplitude (default: %(default)s)')
-
-
 parser.add_argument(
     '-d', '--device',
     help='output device (numeric ID or substring)')
 parser.add_argument(
     '-b', '--blocksize', type=int, default=0,
     help='block size (default: %(default)s)')
-# TODO: latency?
+# TODO: latency? or remove blocksize?
 parser.add_argument(
     '-q', '--queuesize', type=int, default=20,
     help='number of notes queued for playback (default: %(default)s)')
-
-
 args = parser.parse_args(remaining)
-
-
 
 q = queue.Queue(maxsize=args.queuesize)
 
@@ -76,16 +66,17 @@ try:
         note_on /= samplerate
         note_off /= samplerate
         env = np.ones_like(t)
-
         peak = args.amplitude * velocity / 127
-        vol = SUSTAIN * peak
-        env *= vol
+        sus = SUSTAIN * peak
+        env *= sus
         env = np.minimum(
             env,
-            -vol * (t - RELEASE - note_off) / RELEASE)
+            #-sus * (t - note_off - RELEASE) / RELEASE)
+            #sus - sus * (t - note_off - RELEASE) / RELEASE)
+            sus * (1 - (t - note_off) / RELEASE))
         env = np.maximum(
             env,
-            peak + (vol - peak) * (t - ATTACK - note_on) / DECAY)
+            peak + (sus - peak) * (t - ATTACK - note_on) / DECAY)
         env = np.minimum(
             env,
             peak * (t - note_on) / ATTACK)
@@ -109,7 +100,7 @@ try:
         index = 0
         t = np.arange(frames) / samplerate
         block_end = frames
-        # mapping (channel, pitch) -> index, velocity
+        # mapping: (channel, pitch) -> (on_index, velocity, off_index)
         voices = {}
         while True:
             index += round(msg.time * samplerate)
@@ -121,11 +112,11 @@ try:
                     if note_off is None:
                         note_off = block_end
                     signal = generate_signal(note, note_on, velocity, note_off, t)
+                    outdata += signal
                     if signal[-1] != 0:
                         voices[(channel, note)] = note_on, velocity, note_off
                     else:
                         del voices[(channel, note)]
-                    outdata += signal
 
                 outdata, frames, time, status = await loop
                 t = np.arange(block_end, block_end + frames) / samplerate
@@ -143,11 +134,12 @@ try:
                     # TODO: check that note_off is None?
                     note_on, velocity, _ = data
                     signal = generate_signal(msg.note, note_on, velocity, index, t)
+                    outdata += signal
                     if signal[-1] != 0:
+                        # continued in next block
                         voices[(msg.channel, msg.note)] = note_on, velocity, index
                     else:
                         del voices[(msg.channel, msg.note)]
-                    outdata += signal
             else:
                 pass  # ignored
 
