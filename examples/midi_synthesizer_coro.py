@@ -6,6 +6,7 @@ The mido module and NumPy must be installed.
 """
 # https://mdk.fr/blog/python-coroutines-with-async-and-await.html
 import argparse
+from dataclasses import dataclass
 import queue
 
 import mido
@@ -64,8 +65,53 @@ class Synthesizer:
     def __init__(self):
         pass
 
-async def play_note(synth):
-    pass
+    async def run(self, loop):
+
+        while True:
+
+            self.outdata, self.frames, self.time, self.status = await loop
+
+            # TODO: check incoming MIDI messages, update synth state
+
+            # TODO: manage voices
+
+            # TODO: 
+             
+
+@dataclass
+class NoteInfo:
+
+    note: int
+    velocity: int
+    on: float
+    off: float = None
+
+
+async def play_voice(note_info, synth):
+
+    # TODO: if note_on is not in current block: await
+    # TODO: assume that note_on is in current block?
+
+    while True:
+        synth.t
+
+        synth.output
+
+        block_end = ...
+
+        # TODO: check note_off
+
+        # TODO: separate envelope and oscillator
+
+        signal = generate_signal(note, on_index, velocity, block_end, t)
+
+        synth.output += signal
+
+        # TODO: if envelope[-1] == 0: return?
+
+        await synth
+
+    assert False
 
 # TODO: parent class?
 # TODO: future-like?
@@ -123,6 +169,18 @@ try:
 
     async def audio_coroutine(loop):
         print('starting coroutine')
+
+        synth = Synthesizer()
+        # TODO: pass loop, await (will return at end of song)
+
+        await synth.run(loop)
+
+        # TODO: return something from synth?
+
+        return
+
+        # TODO: remove following stuff!
+
         while True:
             outdata, frames, time, status = await loop
             try:
