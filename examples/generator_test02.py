@@ -8,11 +8,11 @@ import sounddevice as sd
 
 
 device = None
-blocksize = 1024
+blocksize = 0
 #filename = 'FurElise.mid'
 filename = 'Girl-of-Mine.mid'
 
-amplitude = 0.2
+amplitude = 0.1
 
 ATTACK = 0.005
 DECAY = 0.2
@@ -37,7 +37,6 @@ class Synth:
         self.queue = queue
         self.samplerate = samplerate
         self.voices = {}
-        #self.released_voices = []
         self.block_end = 0
 
     def envelope(self, note_on, velocity):
@@ -65,11 +64,15 @@ class Synth:
                 data = yield env
                 if env[-1] == 0:
                     if note_off is None:
+                        print('abs', np.max(np.abs(env)))
+                        print('t', self.t[0], self.t[-1])
+                        print('note', note_on, note_off)
+                        print('amp vel', amplitude, velocity)
                         print('missing note_off')
                     return
             else:
-                assert note_off is None
-                note_off = data
+                if note_off is None:
+                    note_off = data
                 data = yield
 
 
@@ -82,18 +85,22 @@ class Synth:
         while True:
             event = yield
             if event is not None:
-                try:
-                    note_on, velocity = event
-                except (TypeError, ValueError):
-                    assert envelopes
-                    envelopes[-1].send(event)
-                else:
+                cmd, *args = event
+                if cmd == 'note_on':
+                    note_on, velocity = args
+                    assert velocity > 0
                     if envelopes:
                         # Send note_off time to previous envelope
                         envelopes[-1].send(note_on)
                     new_env = self.envelope(note_on, velocity)
                     new_env.send(None)
                     envelopes.append(new_env)
+                elif cmd == 'note_off':
+                    note_off, = args
+                    assert envelopes
+                    envelopes[-1].send(note_off)
+                else:
+                    assert False
                 continue
 
             env = 0
@@ -108,6 +115,8 @@ class Synth:
             envelopes = keep
             sine = np.sin(2 * np.pi * m2f(pitch) * self.t)
             self.outdata[:, 0] += env * sine
+            if len(envelopes) == 0:
+                return
 
     def update_audio_block(self):
         # Iterating over a copy because item may be removed
@@ -140,21 +149,24 @@ class Synth:
             current_time += msg.time
             while current_time >= self.block_end / self.samplerate:
                 yield from self.update_audio_block()
-            if msg.type == 'note_on':
+            if msg.type == 'note_on' and msg.velocity > 0:
                 key = msg.channel, msg.note
                 voice = self.voices.get(key)
                 if voice is None:
                     voice = self.voice(msg.note)
                     voice.send(None)
                     self.voices[key] = voice
-                voice.send((current_time, msg.velocity))
-            elif msg.type == 'note_off':
-                voice = self.voices.get(key)
+                voice.send(('note_on', current_time, msg.velocity))
+            elif msg.type in ['note_off', 'note_on']:
+                voice = self.voices.get((msg.channel, msg.note))
                 if voice is None:
                     print('note off without note on (ignored)')
                 else:
                     # NB: no StopIteration here
-                    voice.send(current_time)
+                    voice.send(('note_off', current_time))
+            else:
+                # Other MIDI events are ignored
+                pass
 
 samplerate = sd.query_devices(device, 'output')['default_samplerate']
 
