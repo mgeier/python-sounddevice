@@ -150,18 +150,15 @@ class MidiSynth:
                 if voice is None:
                     print('note off without note on (ignored)')
                 else:
-                    # NB: no StopIteration here
                     voice.send(('note_off', current_time))
             else:
                 # Other MIDI events are ignored
                 pass
         print('end of MIDI messages')
-
-        # TODO: somehow force note_off in all voices?
-
+        for voice in self.voices:
+            voice.send(('note_off', current_time))
         while self.voices:
             yield from self.update_audio_block()
-
         print('end of playback')
 
 
