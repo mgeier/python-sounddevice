@@ -151,12 +151,10 @@ class MidiSynth:
                 else:
                     # NB: note_off velocity is ignored
                     voice.send(('note_off', current_time))
-        print('end of MIDI messages')
         for voice in self.voices:
             voice.send(('note_off', current_time))
         while self.voices:
             yield from self.update_audio_block()
-        print('end of playback')
 
 
 samplerate = sd.query_devices(device, 'output')['default_samplerate']
