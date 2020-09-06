@@ -137,23 +137,20 @@ class MidiSynth:
             current_time += msg.time
             while current_time >= self.block_end / self.samplerate:
                 yield from self.update_audio_block()
-            if msg.type == 'note_on' and msg.velocity > 0:
+            if msg.type in ('note_off', 'note_on'):
                 key = msg.channel, msg.note
                 voice = self.voices.get(key)
-                if voice is None:
-                    voice = self.voice(msg.note)
-                    voice.send(None)
-                    self.voices[key] = voice
-                voice.send(('note_on', current_time, msg.velocity))
-            elif msg.type in ['note_off', 'note_on']:
-                voice = self.voices.get((msg.channel, msg.note))
-                if voice is None:
+                if msg.type == 'note_on' and msg.velocity > 0:
+                    if voice is None:
+                        voice = self.voice(msg.note)
+                        voice.send(None)
+                        self.voices[key] = voice
+                    voice.send(('note_on', current_time, msg.velocity))
+                elif voice is None:
                     print('note off without note on (ignored)')
                 else:
+                    # NB: note_off velocity is ignored
                     voice.send(('note_off', current_time))
-            else:
-                # Other MIDI events are ignored
-                pass
         print('end of MIDI messages')
         for voice in self.voices:
             voice.send(('note_off', current_time))
