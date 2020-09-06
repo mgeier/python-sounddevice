@@ -73,28 +73,26 @@ class MidiSynth:
                 data = yield
 
 
-    def voice(self, pitch):
+    def voice(self, pitch, note_on, velocity):
         # NB: There can be multiple consecutive note_on events,
         #     each creating a separate envelope.
-        envelopes = []
-        note_off = None
-
-        while True:
+        env = self.envelope(note_on, velocity)
+        env.send(None)
+        envelopes = [env]
+        while envelopes:
             event = yield
             if event is not None:
                 cmd, *args = event
                 if cmd == 'note_on':
                     note_on, velocity = args
                     assert velocity > 0
-                    if envelopes:
-                        # Send note_off time to previous envelope
-                        envelopes[-1].send(note_on)
-                    new_env = self.envelope(note_on, velocity)
-                    new_env.send(None)
-                    envelopes.append(new_env)
+                    # Send note_off time to previous envelope
+                    envelopes[-1].send(note_on)
+                    env = self.envelope(note_on, velocity)
+                    env.send(None)
+                    envelopes.append(env)
                 elif cmd == 'note_off':
                     note_off, = args
-                    assert envelopes
                     envelopes[-1].send(note_off)
                 else:
                     assert False
@@ -112,8 +110,6 @@ class MidiSynth:
             envelopes = keep
             sine = np.sin(2 * np.pi * m2f(pitch) * self.t)
             self.outdata[:, 0] += env * sine
-            if len(envelopes) == 0:
-                return
 
     def update_audio_block(self):
         # Iterating over a copy because item may be removed
@@ -142,10 +138,12 @@ class MidiSynth:
                 voice = self.voices.get(key)
                 if msg.type == 'note_on' and msg.velocity > 0:
                     if voice is None:
-                        voice = self.voice(msg.note)
+                        voice = self.voice(
+                            msg.note, current_time, msg.velocity)
                         voice.send(None)
                         self.voices[key] = voice
-                    voice.send(('note_on', current_time, msg.velocity))
+                    else:
+                        voice.send(('note_on', current_time, msg.velocity))
                 elif voice is None:
                     print('note off without note on (ignored)')
                 else:
