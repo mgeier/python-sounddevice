@@ -8,6 +8,7 @@ import sounddevice as sd
 
 device = None
 blocksize = 0
+#blocksize = 1024
 #filename = 'FurElise.mid'
 filename = 'Girl-of-Mine.mid'
 
@@ -41,10 +42,9 @@ class MidiSynth:
         data = yield
         while True:
             if data is None:
-                env = np.ones_like(self.t)
                 peak = amplitude * velocity / 127
                 sus = SUSTAIN * peak
-                env *= sus
+                env = sus * np.ones_like(self.t)
                 if note_off is not None:
                     env = np.minimum(
                         env,
@@ -60,12 +60,8 @@ class MidiSynth:
                 env = np.maximum(env, 0)
                 data = yield env
                 if env[-1] == 0:
-                    if note_off is None:
-                        print('abs', np.max(np.abs(env)))
-                        print('t', self.t[0], self.t[-1])
-                        print('note', note_on, note_off)
-                        print('amp vel', amplitude, velocity)
-                        print('missing note_off')
+                    # TODO: calculate from decay and release slope instead?
+                    assert note_off
                     return
             else:
                 if note_off is None:
@@ -86,28 +82,29 @@ class MidiSynth:
                 if cmd == 'note_on':
                     note_on, velocity = args
                     assert velocity > 0
-                    # Send note_off time to previous envelope
-                    envelopes[-1].send(note_on)
+                    try:
+                        envelopes[-1].send(note_on)
+                    except StopIteration:
+                        print('TODO: StopIteration when forcing note_off')
                     env = self.envelope(note_on, velocity)
                     env.send(None)
                     envelopes.append(env)
                 elif cmd == 'note_off':
                     note_off, = args
-                    envelopes[-1].send(note_off)
+                    try:
+                        envelopes[-1].send(note_off)
+                    except StopIteration:
+                        print('TODO: StopIteration when sending note_off')
                 else:
                     assert False
                 continue
 
             env = 0
-            keep = []
-            for e in envelopes:
+            for i in reversed(range(len(envelopes))):
                 try:
-                    env = env + e.send(None)
+                    env = env + envelopes[i].send(None)
                 except StopIteration:
-                    pass
-                else:
-                    keep.append(e)
-            envelopes = keep
+                    del envelopes[i]
             sine = np.sin(2 * np.pi * m2f(pitch) * self.t)
             self.outdata[:, 0] += env * sine
 
@@ -131,7 +128,7 @@ class MidiSynth:
         current_time = self.t[0]
         for msg in self.midifile:
             current_time += msg.time
-            while current_time >= self.block_end / self.samplerate:
+            while current_time > self.t[-1]:
                 yield from self.update_audio_block()
             if msg.type in ('note_off', 'note_on'):
                 key = msg.channel, msg.note
