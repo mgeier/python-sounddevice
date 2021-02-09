@@ -1605,6 +1605,10 @@ class Stream(InputStream, OutputStream):
             Device index(es) or query string(s) specifying the device(s)
             to be used.  The default value(s) can be changed with
             `default.device`.
+            If a string is given, the device is selected which contains
+            all space-separated parts in the right order.  Each device
+            string contains the name of the corresponding host API in
+            the end.  The string comparison is case-insensitive.
         channels : int or pair of int, optional
             The number of channels of sound to be delivered to the
             stream callback or accessed by `read()` or `write()`.  It
@@ -1624,6 +1628,12 @@ class Stream(InputStream, OutputStream):
             The packed 24 bit format ``'int24'`` is only supported in
             the "raw" stream classes, see `RawStream`.  The default
             value(s) can be changed with `default.dtype`.
+            If NumPy is available, the corresponding `numpy.dtype`
+            objects can be used as well.  The floating point
+            representations ``'float32'`` and ``'float64'`` use ``+1.0``
+            and ``-1.0`` as the maximum and minimum values,
+            respectively.  ``'uint8'`` is an unsigned 8 bit format where
+            ``128`` is considered "ground".
         latency : float or {'low', 'high'} or pair thereof, optional
             The desired latency in seconds.  The special values
             ``'low'`` and ``'high'`` (latter being the default) select
@@ -2055,12 +2065,9 @@ class default(object):
     device = None, None
     """Index or query string of default input/output device.
 
-    If not overwritten, this is queried from PortAudio.
+    See the *device* argument of `Stream`.
 
-    If a string is given, the device is selected which contains all
-    space-separated parts in the right order.  Each device string
-    contains the name of the corresponding host API in the end.
-    The string comparison is case-insensitive.
+    If not overwritten, this is queried from PortAudio.
 
     See Also
     --------
@@ -2068,14 +2075,19 @@ class default(object):
 
     """
     channels = _default_channels = None, None
-    """Number of input/output channels.
+    """Default number of input/output channels.
 
-    The maximum number of channels for a given device can be found out
-    with `query_devices()`.
+    See the *channels* argument of `Stream`.
+
+    See Also
+    --------
+    :func:`query_devices`
 
     """
     dtype = _default_dtype = 'float32', 'float32'
-    """Data type used for input/output samples.
+    """Default data type used for input/output samples.
+
+    See the *dtype* argument of `Stream`.
 
     The types ``'float32'``, ``'int32'``, ``'int16'``, ``'int8'`` and
     ``'uint8'`` can be used for all streams and functions.
@@ -2084,14 +2096,6 @@ class default(object):
     ``'float32'``) and `RawInputStream`, `RawOutputStream` and
     `RawStream` support ``'int24'`` (packed 24 bit format, which is
     *not* supported in NumPy!).
-
-    If NumPy is available, the corresponding `numpy.dtype` objects can
-    be used as well.
-
-    The floating point representations ``'float32'`` and ``'float64'``
-    use +1.0 and -1.0 as the maximum and minimum values, respectively.
-    ``'uint8'`` is an unsigned 8 bit format where 128 is considered
-    "ground".
 
     """
     latency = _default_latency = 'high', 'high'
