@@ -1627,23 +1627,21 @@ class Stream(InputStream, OutputStream):
         latency : float or {'low', 'high'} or pair thereof, optional
             The desired latency in seconds.  The special values
             ``'low'`` and ``'high'`` (latter being the default) select
-            the default low and high latency, respectively (see
-            `query_devices()`).  The default value(s) can be changed
-            with `default.latency`.
-            Where practical, implementations should configure their
-            latency based on this parameter, otherwise they may choose
-            the closest viable latency instead.  Unless the suggested
-            latency is greater than the absolute upper limit for the
-            device, implementations should round the *latency* up to the
-            next practical value -- i.e. to provide an equal or higher
-            latency  wherever possible.  Actual latency values for an
-            open stream may be retrieved using the `latency` attribute.
+            the device's default low and high latency, respectively (see
+            `query_devices()`).  ``'high'`` is typically more robust
+            (i.e. buffer under-/overflows are less likely),
+            but the latency may be too large for interactive applications.
 
-            .. note:: Specifying the desired latency as 'high' does
-                not guarantee a stable audio stream. For reference, by
-                default Audacity specifies a desired latency of 100ms and
-                achieves robust performance.
+            .. note:: Specifying the desired latency as ``'high'`` does
+                not *guarantee* a stable audio stream. For reference, by
+                default Audacity_ specifies a desired latency of ``0.1``
+                seconds and typically achieves robust performance.
 
+            .. _Audacity: https://www.audacityteam.org/
+
+            The default value(s) can be changed with `default.latency`.
+            Actual latency values for an open stream can be retrieved
+            using the `latency` attribute.
         extra_settings : settings object or pair thereof, optional
             This can be used for host-API-specific input/output
             settings.  See `default.extra_settings`.
@@ -2097,19 +2095,7 @@ class default(object):
 
     """
     latency = _default_latency = 'high', 'high'
-    """Suggested input/output latency in seconds.
-
-    The special values ``'low'`` and ``'high'`` can be used to select
-    the default low/high latency of the chosen device.
-    ``'high'`` is typically more robust (i.e. buffer under-/overflows
-    are less likely), but the latency may be too large for interactive
-    applications.
-
-    See Also
-    --------
-    :func:`query_devices`
-
-    """
+    """See the *latency* argument of `Stream`."""
     extra_settings = _default_extra_settings = None, None
     """Host-API-specific input/output settings.
 
