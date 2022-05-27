@@ -1,6 +1,8 @@
 import os
 import platform
 from setuptools import setup
+from setuptools.command.develop import develop
+from setuptools.command.install import install
 
 # "import" __version__
 __version__ = 'unknown'
@@ -57,6 +59,34 @@ else:
             return 'py3', 'none', oses
 
     cmdclass = {'bdist_wheel': bdist_wheel_half_pure}
+
+def post_install():
+    if system == 'Darwin':
+        # Bizarrely, on macOS, there doesn't seem to be another way to do this: you MUST use install_name_tool
+        import subprocess
+        # It could be either of these, so try both
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.2.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
+
+class PostDevelopCommand(develop):
+    """Post-installation for development mode."""
+
+    def run(self):
+        develop.run(self)
+        post_install()
+
+
+class PostInstallCommand(install):
+    """Post-installation for installation mode."""
+
+    def run(self):
+        install.run(self)
+        post_install()
+
+
+cmdclass['develop'] = PostDevelopCommand
+cmdclass['install'] = PostInstallCommand
+
 
 setup(
     name='sounddevice',
