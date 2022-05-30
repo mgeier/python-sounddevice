@@ -38,13 +38,13 @@ else:
     zip_safe = True
 
 
-def post_install():
+def post_build(output_path):
     if system == 'Darwin':
         # Bizarrely, on macOS, there doesn't seem to be another way to do this: you MUST use install_name_tool
         import subprocess
         # It could be either of these, so try both
-        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
-        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.2.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.dylib", "@rpath/libportaudio.dylib", output_path])
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.2.dylib", "@rpath/libportaudio.dylib", output_path])
 
 
 try:
@@ -75,7 +75,7 @@ class PostBuildCommand(build_ext):
 
     def run(self):
         build_ext.run(self)
-        post_install()
+        post_build(self.get_ext_fullpath('_sounddevice'))
 
 
 cmdclass['build_ext'] = PostBuildCommand
