@@ -3,17 +3,26 @@ from cffi import FFI
 import platform as _platform
 
 extra_header_files = ""
+extra_link_args = []
 
 if _platform.system() == 'Darwin':
     extra_header_files = """
     #include "pa_mac_core.h"
     """
+    extra_link_args = ["-Wl,-rpath,@loader_path/_sounddevice_data/portaudio-binaries"]
 elif _platform.system() == 'Windows':
     extra_header_files = """
     #include "pa_win_waveformat.h"
     #include "pa_asio.h"
     #include "pa_win_wasapi.h"
     """
+    # TODO: how to do RPATH on Windows?
+elif _platform.system() == 'Linux':
+    extra_header_files = """
+    #include "pa_linux_alsa.h"
+    """
+    extra_link_args = ["-Wl,-rpath,$ORIGIN/_sounddevice_data/portaudio-binaries"]
+
 
 ffibuilder = FFI()
 ffibuilder.set_source(
@@ -26,7 +35,7 @@ ffibuilder.set_source(
     include_dirs=["./include"],
     libraries=["portaudio"],
     library_dirs=["./_sounddevice_data/portaudio-binaries"],
-    extra_link_args=["-Wl,-rpath,@loader_path/_sounddevice_data/portaudio-binaries"]
+    extra_link_args=extra_link_args
 )
 
 ffibuilder.cdef("""

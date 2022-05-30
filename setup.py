@@ -1,8 +1,7 @@
 import os
 import platform
 from setuptools import setup
-from setuptools.command.develop import develop
-from setuptools.command.install import install
+from setuptools.command.build_ext import build_ext
 
 # "import" __version__
 __version__ = 'unknown'
@@ -38,6 +37,16 @@ else:
     package_data = None
     zip_safe = True
 
+
+def post_install():
+    if system == 'Darwin':
+        # Bizarrely, on macOS, there doesn't seem to be another way to do this: you MUST use install_name_tool
+        import subprocess
+        # It could be either of these, so try both
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
+        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.2.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
+
+
 try:
     from wheel.bdist_wheel import bdist_wheel
 except ImportError:
@@ -60,32 +69,16 @@ else:
 
     cmdclass = {'bdist_wheel': bdist_wheel_half_pure}
 
-def post_install():
-    if system == 'Darwin':
-        # Bizarrely, on macOS, there doesn't seem to be another way to do this: you MUST use install_name_tool
-        import subprocess
-        # It could be either of these, so try both
-        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
-        subprocess.run(["install_name_tool", "-change", "/usr/local/lib/libportaudio.2.dylib", "@rpath/libportaudio.dylib", "./_sounddevice.abi3.so"])
 
-class PostDevelopCommand(develop):
+class PostBuildCommand(build_ext):
     """Post-installation for development mode."""
 
     def run(self):
-        develop.run(self)
+        build_ext.run(self)
         post_install()
 
 
-class PostInstallCommand(install):
-    """Post-installation for installation mode."""
-
-    def run(self):
-        install.run(self)
-        post_install()
-
-
-cmdclass['develop'] = PostDevelopCommand
-cmdclass['install'] = PostInstallCommand
+cmdclass['build_ext'] = PostBuildCommand
 
 
 setup(
