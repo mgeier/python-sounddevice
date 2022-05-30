@@ -92,7 +92,7 @@ setup(
     setup_requires=['CFFI>=1.0'],
     install_requires=['CFFI>=1.0'],
     extras_require={'NumPy': ['NumPy']},
-    cffi_modules=['sounddevice_build.py:ffibuilder'],
+    cffi_modules=['sounddevice_build.py:ffibuilder', 'sounddevice_build_apimode.py:ffibuilder'],
     author='Matthias Geier',
     author_email='Matthias.Geier@gmail.com',
     description='Play and Record Sound with Python',

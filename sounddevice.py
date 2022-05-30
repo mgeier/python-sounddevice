@@ -53,7 +53,40 @@ __version__ = '0.4.4'
 import atexit as _atexit
 import os as _os
 import sys as _sys
-from _sounddevice import ffi as _ffi, lib as _lib
+from _sounddevice import ffi as _ffi
+
+
+IS_API_MODE = 'PY_SOUNDDEVICE_API_MODE' in _os.environ
+
+if IS_API_MODE:
+    from _sounddevice import lib as _lib
+else:
+    import platform as _platform
+    from ctypes.util import find_library as _find_library
+
+    try:
+        for _libname in (
+                'portaudio',  # Default name on POSIX systems
+                'bin\\libportaudio-2.dll',  # DLL from conda-forge
+                'lib/libportaudio.dylib',  # dylib from anaconda
+                ):
+            _libname = _find_library(_libname)
+            if _libname is not None:
+                break
+        else:
+            raise OSError('PortAudio library not found')
+        _lib = _ffi.dlopen(_libname)
+    except OSError:
+        if _platform.system() == 'Darwin':
+            _libname = 'libportaudio.dylib'
+        elif _platform.system() == 'Windows':
+            _libname = 'libportaudio' + _platform.architecture()[0] + '.dll'
+        else:
+            raise
+        import _sounddevice_data
+        _libname = _os.path.join(
+            next(iter(_sounddevice_data.__path__)), 'portaudio-binaries', _libname)
+        _lib = _ffi.dlopen(_libname)
 
 _sampleformats = {
     'float32': _lib.paFloat32,
@@ -686,10 +719,11 @@ def get_portaudio_version():
     return _lib.Pa_GetVersion(), _ffi.string(_lib.Pa_GetVersionText()).decode()
 
 
-@_ffi.def_extern(error=_lib.paAbort)
-def FFI_STREAM_CALLBACK(iptr, optr, frames, time, status, userdata):
-    stream = _ffi.from_handle(userdata)
-    return stream._callback(iptr, optr, frames, time, status, None)
+if IS_API_MODE:
+    @_ffi.def_extern(error=_lib.paAbort)
+    def FFI_STREAM_CALLBACK(iptr, optr, frames, time, status, userdata):
+        stream = _ffi.from_handle(userdata)
+        return stream._py_callback(iptr, optr, frames, time, status, None)
 
 
 class _StreamBase:
@@ -798,20 +832,28 @@ class _StreamBase:
                 iparameters = _ffi.NULL
                 oparameters = parameters
 
-        # ffi_callback = _ffi.callback('PaStreamCallback', error=_lib.paAbort)
+        global IS_API_MODE
+        if IS_API_MODE:
+            def ffi_callback(fn):
+                userdata = _ffi.new_handle(self)
+                self._userdata_ptr = userdata
+                self._py_callback = fn
+                return _lib.FFI_STREAM_CALLBACK
+        else:
+            ffi_callback = _ffi.callback('PaStreamCallback', error=_lib.paAbort)
 
         if callback is None:
             callback_ptr = _ffi.NULL
         elif kind == 'input' and wrap_callback == 'buffer':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 data = _buffer(iptr, frames, self._channels, self._samplesize)
                 return _wrap_callback(callback, data, frames, time, status)
 
         elif kind == 'input' and wrap_callback == 'array':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 data = _array(
                     _buffer(iptr, frames, self._channels, self._samplesize),
@@ -820,14 +862,14 @@ class _StreamBase:
 
         elif kind == 'output' and wrap_callback == 'buffer':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 data = _buffer(optr, frames, self._channels, self._samplesize)
                 return _wrap_callback(callback, data, frames, time, status)
 
         elif kind == 'output' and wrap_callback == 'array':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 data = _array(
                     _buffer(optr, frames, self._channels, self._samplesize),
@@ -836,7 +878,7 @@ class _StreamBase:
 
         elif kind == 'duplex' and wrap_callback == 'buffer':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 ichannels, ochannels = self._channels
                 isize, osize = self._samplesize
@@ -847,7 +889,7 @@ class _StreamBase:
 
         elif kind == 'duplex' and wrap_callback == 'array':
 
-            # @ffi_callback
+            @ffi_callback
             def callback_ptr(iptr, optr, frames, time, status, _):
                 ichannels, ochannels = self._channels
                 idtype, odtype = self._dtype
@@ -865,15 +907,15 @@ class _StreamBase:
 
         # CFFI callback object must be kept alive during stream lifetime:
         self._callback = callback_ptr
-        # if userdata is None:
-            # userdata = _ffi.NULL
-        userdata = _ffi.new_handle(self)
-        self._userdata_ptr = userdata
+        if userdata is None:
+            userdata = _ffi.NULL
+        if not hasattr(self, '_userdata_ptr'):
+            self._userdata_ptr = userdata
 
         self._ptr = _ffi.new('PaStream**')
         _check(_lib.Pa_OpenStream(self._ptr, iparameters, oparameters,
                                   samplerate, blocksize, stream_flags,
-                                  _lib.FFI_STREAM_CALLBACK, userdata),
+                                  self._callback, self._userdata_ptr),
                f'Error opening {self.__class__.__name__}')
 
         # dereference PaStream** --> PaStream*
