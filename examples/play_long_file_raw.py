@@ -87,14 +87,14 @@ try:
             callback=callback, finished_callback=event.set)
         with stream:
             timeout = args.blocksize * args.buffersize / f.samplerate
-            while data:
+            while data:  # type: ignore
                 data = f.buffer_read(args.blocksize, dtype='float32')
                 q.put(data, timeout=timeout)
             event.wait()  # Wait until playback is finished
 except KeyboardInterrupt:
-    parser.exit('\nInterrupted by user')
+    parser.exit(1, '\nInterrupted by user')
 except queue.Full:
     # A timeout occurred, i.e. there was an error in the callback
     parser.exit(1)
 except Exception as e:
-    parser.exit(type(e).__name__ + ': ' + str(e))
+    parser.exit(1, type(e).__name__ + ': ' + str(e))
